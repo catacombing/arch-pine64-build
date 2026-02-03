@@ -36,12 +36,21 @@ while true; do
     echo "Starting build of $md5sum…"
 
     # Build the image.
-    ./build.sh -a aarch64 -d "$device" -p "$packages" || continue
+    if [ "$device" == "fairphone-fp5" ]; then
+        ./build_fp5.sh -a aarch64 -d "$device" -p "$packages" || continue
+    else
+        ./build.sh -a aarch64 -d "$device" -p "$packages" || continue
+    fi
     echo "Finished build of $md5sum"
 
-    # Upload the built image.
     alarm_md5sum=$(md5sum ./build/ArchLinuxARM* | awk '{print $1}')
-    filename="alarm-$device-$alarm_md5sum-$md5sum.img.xz"
+    if [ "$device" == "fairphone-fp5" ]; then
+        filename="alarm-$device-$alarm_md5sum-$md5sum-root.img.xz"
+    else
+        filename="alarm-$device-$alarm_md5sum-$md5sum.img.xz"
+    fi
+
+    # Upload the built image.
     if [ -f "./build/$filename" ]; then
         curl -fX POST \
             -H "Authorization: Bearer $1" \

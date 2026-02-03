@@ -355,11 +355,12 @@ make_image() {
     [ ! -e "$output_folder/$danctnix_tarball" ] && \
         error "Image tarball not found! (how did you get here?)"
 
-    image="alarm-$device-$rootfs_md5-$packages_md5.img"
+    boot_image="alarm-$device-$rootfs_md5-boot.img"
+    root_image="alarm-$device-$rootfs_md5-$packages_md5-root.img"
 
     # Short-circuit if image is up to date.
-    if [ -f "$output_folder/$image.xz" ]; then
-        echo "Using cached image $output_folder/$image.xz"
+    if [ -f "$output_folder/$root_image.xz" ]; then
+        echo "Using cached image $output_folder/$root_image.xz"
         return;
     fi
 
@@ -367,64 +368,91 @@ make_image() {
     rm -rf $temp
     mkdir -p $temp
 
-    image_path="$output_folder/$image"
+    boot_partition_path=$(mktemp)
+    boot_image_path="$output_folder/$boot_image"
+    root_image_path="$output_folder/$root_image"
 
-    boot_part_start=${boot_part_start:-1}
-    boot_part_size=${boot_part_size:-128}
-    imgsize=$(cat "$output_folder/$sizefile")
-    imgsize=$(( (boot_part_start + boot_part_size) * 1048576 + imgsize ))
-    disk_size="${imgsize:-8G}"
+    boot_size="1G"
+    root_size=$(cat "$output_folder/$sizefile")
 
-    echo "Generating a blank disk image ($disk_size)"
-    fallocate -l $disk_size $image_path
+    echo "Creating boot disk image ($boot_size)"
+    fallocate -l $boot_size $boot_partition_path
+    parted -s $boot_partition_path mktable gpt
+    parted -s $boot_partition_path mkpart boot fat32 '0%' '100%'
+    parted -s $boot_partition_path set 1 esp on
+    boot_loop_device=$(losetup -f)
+    losetup -P $boot_loop_device "$boot_partition_path"
+    mkfs.vfat -S 4096 -g "4/32" -n "ALARM_BOOT" ${boot_loop_device}p1
 
-    echo "Boot partition start: ${boot_part_start}MB"
-    echo "Boot partition size: ${boot_part_size}MB"
+    echo "Generating root disk image ($root_size)"
+    fallocate -l $root_size $root_image_path
+    # TODO: Still getting errors when flashing due to block size
+    # error: write_sparse_skip_chunk: don't care size 1350120726 is not a multiple of the block size 4096
+    mkfs.ext4 -L "ALARM_ROOT" $root_image_path
 
-    parted -s $image_path mktable gpt
-    parted -s $image_path mkpart boot fat32 ${boot_part_start}MB $[boot_part_start+boot_part_size]MB
-    parted -s $image_path set 1 esp on
-    parted -s $image_path mkpart rootfs ext4 $[boot_part_start+boot_part_size]MB '100%'
-
-    echo "Attaching loop device"
-    loop_device=$(losetup -f)
-    losetup -P $loop_device "$image_path"
-
-    echo "Creating filesystems"
-    mkfs.vfat ${loop_device}p1
-    mkfs.ext4 ${loop_device}p2
-
-    echo "Mounting disk image"
-    mount ${loop_device}p2 $temp
+    echo "Mounting disk images"
+    mount ${root_image_path} $temp
     mkdir -p $temp/boot
-    mount ${loop_device}p1 $temp/boot
+    mount ${boot_loop_device}p1 $temp/boot
 
-    echo "Extracting rootfs to image"
+    echo "Extracting rootfs to mount"
     bsdtar -xpf "$output_folder/$danctnix_tarball" -C "$temp" \
         || error "Failed to extract rootfs to image"
 
-    [ $NO_BOOTLOADER -lt 1 ] && {
-        echo "Installing bootloader"
-        case $platform in
-            "rockchip")
-                dd if=$temp/boot/idbloader.img of=$loop_device seek=64 conv=notrunc,fsync
-                dd if=$temp/boot/u-boot.itb of=$loop_device seek=16384 conv=notrunc,fsync
-                ;;
-            *)
-                dd if=$temp/boot/$bootloader of=$loop_device bs=128k seek=1
-                ;;
-        esac; }
-
     echo "Generating fstab"
-    genfstab -U $temp | grep UUID | grep -v "swap" | tee -a $temp/etc/fstab
+    genfstab -L $temp | grep LABEL | grep -v "swap" | tee -a $temp/etc/fstab
+
+    echo "Updating boot partition"
+    mount_chroot
+    cat > "$temp/setup_boot" <<EOF
+#!/bin/bash
+set -e
+
+bootctl install --variables=no
+
+rm /setup_boot
+EOF
+    chmod +x "$temp/setup_boot"
+    do_chroot /setup_boot || error "Failed to update boot partition"
+
+    # Write systemd-boot loader entry.
+    cat > "$temp/boot/loader/entries/alarm.conf" << EOF
+title ALARM
+sort-key ALARM
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+
+options quiet root=LABEL=ALARM_ROOT rw
+devicetree /dtbs/qcom/qcm6490-fairphone-fp5.dtb
+EOF
+
+    # Convert boot partition to non-partitioned boot image.
+    # This is necessary since systemd-boot wants a partition.
+
+    echo "Copying boot partition to boot image"
+
+    fallocate -l $boot_size $boot_image_path
+    parted -s $boot_image_path mktable gpt
+    mkfs.vfat -S 4096 -g "4/32" -n "ALARM_BOOT" ${boot_image_path}
+
+    umount -R $temp
+    mkdir $temp/boot_part
+    mkdir $temp/boot_file
+    mount ${boot_loop_device}p1 $temp/boot_part
+    mount ${boot_image_path} $temp/boot_file
+
+    cp -r $temp/boot_part/* $temp/boot_file/
 
     echo "Unmounting disk image"
-    umount -R $temp
+    umount $temp/boot_part
+    umount $temp/boot_file
     rm -rf $temp
-    losetup -d $loop_device
+    losetup -d $boot_loop_device
+    rm -rf $boot_partition_path
 
-    echo "Compressing image"
-    xz -z "$output_folder/$image"
+    echo "Compressing images"
+    xz -z "$boot_image_path"
+    xz -z "$root_image_path"
 }
 
 pre_check

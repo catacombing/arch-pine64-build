@@ -15,13 +15,8 @@ pacman-key --populate archlinuxarm danctnix catacomb
 pacman-key --lsign-key 68B3537F39A313B3E574D06777193F152BDBE6A6
 pacman-key --lsign-key 733163AA31950B7F4BE7EC4082CE6C29C7797E04
 
-if [ -e "/usr/lib/initcpio/hooks/resizerootfs" ]; then
-    rm /usr/lib/initcpio/hooks/resizerootfs
-    rm /usr/lib/initcpio/install/resizerootfs
-
-    sed -i '/^HOOKS=/s/resizerootfs //g' /etc/mkinitcpio.conf
-    mkinitcpio -P
-fi
+# Grow root filesystem to entire disk
+resize2fs $(df --output=source / | tail -n 1)
 
 # Cleanup
 rm /usr/local/sbin/first_time_setup.sh
