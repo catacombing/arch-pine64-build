@@ -451,8 +451,8 @@ EOF
     rm -rf $boot_partition_path
 
     echo "Compressing images"
-    xz -z "$boot_image_path"
-    xz -z "$root_image_path"
+    xz -zf "$boot_image_path"
+    xz -zf "$root_image_path"
 }
 
 pre_check

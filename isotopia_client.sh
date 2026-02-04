@@ -26,19 +26,20 @@ while true; do
     packages=$(echo "$job" | jq -r '.packages')
     device=$(echo "$job" | jq -r '.device')
     md5sum=$(echo "$job" | jq -r '.md5sum')
-    echo "Found new pending job: $md5sum"
+    echo "Found new pending job: $md5sum ($device)"
 
     # Notify jobserver we'd like to build this job.
     #
     # This will fail when a racing condition caused a different builder to pick
     # up the same job.
     curl -fX PUT --json '"building"' "$api/requests/$device/$md5sum/status" || continue
-    echo "Starting build of $md5sum…"
 
     # Build the image.
     if [ "$device" == "fairphone-fp5" ]; then
+        echo "Starting FP5 build of $md5sum…"
         ./build_fp5.sh -a aarch64 -d "$device" -p "$packages" || continue
     else
+        echo "Starting build of $md5sum…"
         ./build.sh -a aarch64 -d "$device" -p "$packages" || continue
     fi
     echo "Finished build of $md5sum"
