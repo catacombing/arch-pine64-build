@@ -46,7 +46,7 @@ while true; do
 
     alarm_md5sum=$(md5sum ./build/ArchLinuxARM* | awk '{print $1}')
     if [ "$device" == "fairphone-fp5" ]; then
-        filename="alarm-$device-$alarm_md5sum-$md5sum-root.img.xz"
+        filename="alarm-$device-$alarm_md5sum-$md5sum.tar"
     else
         filename="alarm-$device-$alarm_md5sum-$md5sum.img.xz"
     fi

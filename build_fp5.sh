@@ -355,12 +355,13 @@ make_image() {
     [ ! -e "$output_folder/$danctnix_tarball" ] && \
         error "Image tarball not found! (how did you get here?)"
 
+    tar_file_path="$output_folder/alarm-$device-$rootfs_md5-$packages_md5.tar"
     boot_image="alarm-$device-$rootfs_md5-boot.img"
     root_image="alarm-$device-$rootfs_md5-$packages_md5-root.img"
 
     # Short-circuit if image is up to date.
-    if [ -f "$output_folder/$root_image.xz" ]; then
-        echo "Using cached image $output_folder/$root_image.xz"
+    if [ -f "$tar_file_path" ]; then
+        echo "Using cached image $tar_file_path"
         return;
     fi
 
@@ -453,6 +454,11 @@ EOF
     echo "Compressing images"
     xz -zf "$boot_image_path"
     xz -zf "$root_image_path"
+
+    echo "Taring images"
+    tar -cvf "$tar_file_path" -C "$output_folder" "$boot_image.xz" "$root_image.xz"
+    rm "$boot_image_path.xz"
+    rm "$root_image_path.xz"
 }
 
 pre_check
