@@ -1,0 +1,7 @@
+platform="qcom"
+bootloader="u-boot-oneplus-enchilada.img"
+size_ui_barebone="2048M"
+size_ui_phosh="6144M"
+size_ui_plasma="7168M"
+size_ui_sxmo="5120M"
+boot_part_start="1"
