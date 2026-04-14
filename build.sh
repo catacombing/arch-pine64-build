@@ -244,7 +244,11 @@ systemctl enable zramswap
 systemctl enable NetworkManager
 
 groupadd catacomb
-useradd -m -G network,video,audio,rfkill,wheel,catacomb alarm
+if id alarm; then
+    usermod -a -G network,video,audio,rfkill,wheel,catacomb alarm
+else
+    useradd -m -G network,video,audio,rfkill,wheel,catacomb alarm
+fi
 
 cp -rv /etc/skel/. /home/alarm
 chown -R alarm:alarm /home/alarm
